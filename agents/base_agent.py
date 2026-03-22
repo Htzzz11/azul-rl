@@ -11,7 +11,7 @@ class BaseAgent(ABC):
         self.name = name or self.__class__.__name__
 
     @abstractmethod
-    def choose_action(self, observation: dict, valid_actions: List[Tuple[int, int, int, int]]) -> Tuple[int, int, int, int]:
+    def choose_action(self, observation: dict, player_index: int, valid_actions: List[Tuple[int, int, int, int]]) -> Tuple[int, int, int, int]:
         """
         Choose an action given the current game state.
         """

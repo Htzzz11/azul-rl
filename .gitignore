@@ -40,3 +40,4 @@ __pycache__/
 ### Other ###
 azul_marl_env.egg-info/
 .coverage
+results/
