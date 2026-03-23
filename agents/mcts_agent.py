@@ -199,10 +199,10 @@ class MCTSAgent(BaseAgent):
         Deep copy the environment for simulation.
         Strips the matplotlib renderer to avoid copy issues.
         """
-        renderer = self.env.renderer
-        self.env.renderer = None
+        renderer = self.env._renderer
+        self.env._renderer = None
         env_copy = copy.deepcopy(self.env)
-        self.env.renderer = renderer
+        self.env._renderer = renderer
         return env_copy
 
     def _expand(self, node: MCTSNode, env_copy) -> MCTSNode:
