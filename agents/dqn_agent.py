@@ -29,11 +29,11 @@ from agents.base_agent import BaseAgent
 # Total: 5 * 5 * 5 * 5 = 625 possible indices.
 # Many will never be valid; that's fine – we just mask them.
 
-NUM_FACTORIES = 5       # 0 = center, 1-4 = display (2-player game)
+NUM_FACTORIES = 6       # 0 = center, 1-5 = display (2-player: 5 display factories)
 NUM_COLORS = 5
-MAX_FLOOR_TILES = 5     # 0..4
+MAX_FLOOR_TILES = 21    # 0..20 (20 tiles per color, all could land in center)
 NUM_PATTERN_LINES = 5
-ACTION_SPACE_SIZE = NUM_FACTORIES * NUM_COLORS * MAX_FLOOR_TILES * NUM_PATTERN_LINES  # 625
+ACTION_SPACE_SIZE = NUM_FACTORIES * NUM_COLORS * MAX_FLOOR_TILES * NUM_PATTERN_LINES  # 3150
 
 
 def action_to_index(action: Tuple[int, int, int, int]) -> int:
@@ -81,18 +81,22 @@ def encode_state(observation: dict, player_index: int) -> np.ndarray:
     """
     parts: list[np.ndarray] = []
 
-    # Factories: shape (num_display_factories, 5) – flatten
-    # observation['factories'] has shape (num_display, 5); for 2-player that's (4,5)
+    # Factories: shape (num_display_factories, 5) – flatten, normalise by max 4
     fac = np.asarray(observation['factories'], dtype=np.float32).flatten()
+    fac /= np.float32(4.0)
     # Pad/truncate to 25 (5 factories * 5 colors) to match STATE_SIZE layout
     if len(fac) < 25:
-        fac = np.pad(fac, (0, 25 - len(fac)))
+        padded = np.zeros(25, dtype=np.float32)
+        padded[:len(fac)] = fac
+        fac = padded
     else:
         fac = fac[:25]
     parts.append(fac)
 
-    # Center: shape (5,)
-    parts.append(np.asarray(observation['center'], dtype=np.float32)[:5])
+    # Center: shape (5,), normalise by 20 (reasonable upper bound)
+    center = np.asarray(observation['center'], dtype=np.float32)[:5]
+    center /= np.float32(20.0)
+    parts.append(center)
 
     # Current player
     me = observation['players'][player_index]
@@ -100,34 +104,49 @@ def encode_state(observation: dict, player_index: int) -> np.ndarray:
     opp = observation['players'][opp_index]
 
     for player_obs in (me, opp):
-        # pattern_lines (5,5) – replace 5 (empty marker) with 0
+        # pattern_lines (5,5) – shift so empty(5)=0, Blue(0)=1, ..., White(4)=5
+        # then normalise to [0, 1]
         pl = np.asarray(player_obs['pattern_lines'], dtype=np.float32).flatten()
-        pl = np.where(pl == 5, 0.0, pl)
+        mask = pl != np.float32(5.0)
+        pl[mask] += np.float32(1.0)
+        pl[~mask] = np.float32(0.0)
+        pl /= np.float32(5.0)
         parts.append(pl)
 
-        # wall (5,5) – replace 5 (empty) with 0
+        # wall (5,5) – binary: 1.0 if tile placed, 0.0 if empty
+        # (wall position determines color, so binary is sufficient)
         wall = np.asarray(player_obs['wall'], dtype=np.float32).flatten()
-        wall = np.where(wall == 5, 0.0, wall)
+        wall = (wall != np.float32(5.0)).astype(np.float32)
         parts.append(wall)
 
-        # floor (7,)
-        floor = np.asarray(player_obs['floor'], dtype=np.float32)[:7]
-        floor = np.where(floor == 5, 0.0, floor)
+        # floor (7,) – binary: 1.0 if occupied, 0.0 if not
+        floor_raw = player_obs['floor']
+        floor = np.zeros(7, dtype=np.float32)
+        n_floor = min(len(floor_raw), 7)
+        if n_floor > 0:
+            floor[:n_floor] = np.float32(1.0)
         parts.append(floor)
 
         # score (normalised)
-        parts.append(np.array([float(player_obs['score']) / 240.0], dtype=np.float32))
+        parts.append(np.array([np.float32(player_obs['score']) / np.float32(240.0)],
+                              dtype=np.float32))
 
-    # bag (5,)
-    parts.append(np.asarray(observation['bag'], dtype=np.float32)[:5])
-    # lid (5,)
-    parts.append(np.asarray(observation['lid'], dtype=np.float32)[:5])
+    # bag (5,), normalise by 20
+    bag = np.asarray(observation['bag'], dtype=np.float32)[:5]
+    bag /= np.float32(20.0)
+    parts.append(bag)
+    # lid (5,), normalise by 20
+    lid = np.asarray(observation['lid'], dtype=np.float32)[:5]
+    lid /= np.float32(20.0)
+    parts.append(lid)
 
     state = np.concatenate(parts)
     # Ensure exactly STATE_SIZE
     if len(state) < STATE_SIZE:
-        state = np.pad(state, (0, STATE_SIZE - len(state)))
-    else:
+        padded = np.zeros(STATE_SIZE, dtype=np.float32)
+        padded[:len(state)] = state
+        state = padded
+    elif len(state) > STATE_SIZE:
         state = state[:STATE_SIZE]
     return state
 

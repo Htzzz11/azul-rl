@@ -12,7 +12,6 @@ from azul_game_engine.wall import Wall
 from gymnasium import spaces
 from pettingzoo import AECEnv
 from pettingzoo.utils.agent_selector import agent_selector
-from azul_marl_env.render.azul_renderer import AzulRenderer
 
 
 class AzulEnv(AECEnv):
@@ -35,8 +34,8 @@ class AzulEnv(AECEnv):
         self.current_move = 0
         self.max_moves = player_count * 150 if max_moves is None else max_moves
         
-        # Initialize the new renderer
-        self.renderer = AzulRenderer()
+        # Renderer is created lazily on first render() call
+        self._renderer = None
 
         self.observation_spaces: Dict[str, spaces.Space] = {
             agent: spaces.Dict({
@@ -148,11 +147,16 @@ class AzulEnv(AECEnv):
         center_counts = self.state["center"]
         factories = self.state["factories"]
         
-        # Use the new renderer
-        self.renderer.render(self.state, bag_counts, lid_counts, center_counts, factories)
+        # Lazily create renderer on first use (deferred import avoids
+        # loading matplotlib when rendering is not needed, e.g. training)
+        if self._renderer is None:
+            from azul_marl_env.render.azul_renderer import AzulRenderer
+            self._renderer = AzulRenderer()
+        self._renderer.render(self.state, bag_counts, lid_counts, center_counts, factories)
 
     def close(self): # pragma: no cover
-        self.renderer.close()
+        if self._renderer is not None:
+            self._renderer.close()
 
     @staticmethod
     def __convert_tile_dict_to_array__(tile_dict):
