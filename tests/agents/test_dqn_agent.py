@@ -17,6 +17,10 @@ from agents.dqn_agent import (
     index_to_action,
     STATE_SIZE,
     ACTION_SPACE_SIZE,
+    NUM_FACTORIES,
+    NUM_COLORS,
+    MAX_FLOOR_TILES,
+    NUM_PATTERN_LINES,
 )
 
 
@@ -31,14 +35,14 @@ def _make_dummy_observation():
             {
                 'pattern_lines': np.full((5, 5), 5, dtype=np.int32),
                 'wall': np.full((5, 5), 5, dtype=np.int32),
-                'floor': np.full(7, 5, dtype=np.int32),
+                'floor': [],  # real env returns list of present tiles only
                 'is_starting': 0,
                 'score': 0,
             },
             {
                 'pattern_lines': np.full((5, 5), 5, dtype=np.int32),
                 'wall': np.full((5, 5), 5, dtype=np.int32),
-                'floor': np.full(7, 5, dtype=np.int32),
+                'floor': [],
                 'is_starting': 0,
                 'score': 0,
             },
@@ -97,19 +101,19 @@ class TestActionEncoding:
             assert recovered == action, f"{action} -> {idx} -> {recovered}"
 
     def test_index_range(self):
-        for f in range(5):
-            for c in range(5):
-                for t in range(5):
-                    for p in range(5):
+        for f in range(NUM_FACTORIES):
+            for c in range(NUM_COLORS):
+                for t in range(MAX_FLOOR_TILES):
+                    for p in range(NUM_PATTERN_LINES):
                         idx = action_to_index((f, c, t, p))
                         assert 0 <= idx < ACTION_SPACE_SIZE
 
     def test_unique_indices(self):
         indices = set()
-        for f in range(5):
-            for c in range(5):
-                for t in range(5):
-                    for p in range(5):
+        for f in range(NUM_FACTORIES):
+            for c in range(NUM_COLORS):
+                for t in range(MAX_FLOOR_TILES):
+                    for p in range(NUM_PATTERN_LINES):
                         indices.add(action_to_index((f, c, t, p)))
         assert len(indices) == ACTION_SPACE_SIZE
 
