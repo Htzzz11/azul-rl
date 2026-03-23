@@ -13,6 +13,7 @@ import os
 from agents.random_agent import RandomAgent, RandomAgentHierarchical
 from agents.minimax_agent import MinimaxAgent
 from agents.mcts_agent import MCTSAgent
+from agents.dqn_agent import DQNAgent
 from evaluation.simulation_manager import SimulationManager
 
 # Resolve paths relative to project root, not the working directory
@@ -80,6 +81,42 @@ EXPERIMENTS = [
         "agent2": MinimaxAgent(name="Minimax_2"),
         "games": 100,
         "output": "results/minimax_vs_minimax.csv",
+    },
+
+    # DQN vs Random
+    {
+        "name": "DQN vs Random",
+        "agent1": DQNAgent.from_pretrained("models/dqn_final.pt", name="DQN"),
+        "agent2": RandomAgent(name="Random", seed=42),
+        "games": 100,
+        "output": "results/dqn_vs_random.csv",
+    },
+
+    # DQN vs Minimax(depth=1)
+    {
+        "name": "DQN vs Minimax(1)",
+        "agent1": DQNAgent.from_pretrained("models/dqn_final.pt", name="DQN"),
+        "agent2": MinimaxAgent(name="Minimax_d1", depth=1),
+        "games": 100,
+        "output": "results/dqn_vs_minimax.csv",
+    },
+
+    # Minimax(depth=2) vs Random
+    {
+        "name": "Minimax(2) vs Random",
+        "agent1": MinimaxAgent(name="Minimax_d2", depth=2),
+        "agent2": RandomAgent(name="Random", seed=42),
+        "games": 50,
+        "output": "results/minimax2_vs_random.csv",
+    },
+
+    # Minimax(depth=2) vs Minimax(depth=1)
+    {
+        "name": "Minimax(2) vs Minimax(1)",
+        "agent1": MinimaxAgent(name="Minimax_d2", depth=2),
+        "agent2": MinimaxAgent(name="Minimax_d1", depth=1),
+        "games": 50,
+        "output": "results/minimax2_vs_minimax1.csv",
     },
 ]
 
