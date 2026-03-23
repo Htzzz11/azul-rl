@@ -1,14 +1,16 @@
 """
 Training script for the DQN Azul agent.
 
-Self-play (DQN vs DQN) with optional curriculum against RandomAgent.
+Supports curriculum learning: Random -> Self-play -> Minimax opponents.
 Logs episode rewards, win-rate benchmarks, and saves checkpoints.
 
 Usage:
-    python -m scripts.train_dqn --episodes 5000 --lr 1e-4
+    python -m scripts.train_dqn --episodes 10000 --lr 1e-4
+    python -m scripts.train_dqn --episodes 10000 --curriculum   # curriculum training
 """
 
 import argparse
+import gc
 import os
 import random
 import time
@@ -20,6 +22,7 @@ from agents.dqn_agent import (
     DQNAgent, encode_state, action_to_index, ACTION_SPACE_SIZE,
 )
 from agents.random_agent import RandomAgent
+from agents.minimax_agent import MinimaxAgent
 
 
 # ── reward shaping ──────────────────────────────────────────────────────────
@@ -45,15 +48,21 @@ def shaped_reward(obs_before: dict, obs_after: dict, player_index: int,
 # ── single game ─────────────────────────────────────────────────────────────
 def play_training_game(dqn_agent: DQNAgent, opponent,
                        dqn_player_idx: int, seed: int = None,
-                       use_shaping: bool = True):
+                       use_shaping: bool = True,
+                       store_transitions: bool = True):
     """
-    Play one full game, storing transitions for the DQN agent.
+    Play one full game, optionally storing transitions for the DQN agent.
 
     Returns:
         (dqn_score, opp_score, total_reward)  where total_reward is the sum
         of (shaped) rewards collected by the DQN agent during the game.
     """
     env = azul_v1_2players()
+
+    # Give env access to agents that need it (Minimax depth>=2)
+    if hasattr(opponent, 'set_env'):
+        opponent.set_env(env)
+
     obs, info = env.reset(seed=seed)
 
     agents = {dqn_player_idx: dqn_agent,
@@ -62,19 +71,20 @@ def play_training_game(dqn_agent: DQNAgent, opponent,
     # Track state for DQN transitions
     prev_state = None
     prev_action_idx = None
+    prev_action = None
     total_reward = 0.0
 
     for agent_name in env.agent_iter():
         obs, reward, termination, truncation, info = env.last()
 
         if termination or truncation:
-            # Terminal transition for DQN
+            # Terminal transition: use raw reward only (no shaping bonus)
             if prev_state is not None:
                 state_vec = encode_state(obs, dqn_player_idx)
-                r = shaped_reward({}, obs, dqn_player_idx, (0, 0, 0, 0),
-                                  reward) if use_shaping else reward
-                dqn_agent.replay_buffer.push(
-                    prev_state, prev_action_idx, r, state_vec, True)
+                r = reward
+                if store_transitions:
+                    dqn_agent.replay_buffer.push(
+                        prev_state, prev_action_idx, r, state_vec, True)
                 total_reward += r
             break
 
@@ -91,15 +101,18 @@ def play_training_game(dqn_agent: DQNAgent, opponent,
             action_idx = action_to_index(action)
 
             # Store previous transition (reward comes one step later)
+            # Use prev_action for shaping — it's the action that generated this reward
             if prev_state is not None:
-                r = shaped_reward({}, obs, dqn_player_idx, action,
+                r = shaped_reward({}, obs, dqn_player_idx, prev_action,
                                   reward) if use_shaping else reward
-                dqn_agent.replay_buffer.push(
-                    prev_state, prev_action_idx, r, state_vec, False)
+                if store_transitions:
+                    dqn_agent.replay_buffer.push(
+                        prev_state, prev_action_idx, r, state_vec, False)
                 total_reward += r
 
             prev_state = state_vec
             prev_action_idx = action_idx
+            prev_action = action
 
         env.step(action)
 
@@ -112,27 +125,51 @@ def play_training_game(dqn_agent: DQNAgent, opponent,
 
 
 # ── evaluation ──────────────────────────────────────────────────────────────
-def evaluate_vs_random(dqn_agent: DQNAgent, n_games: int = 20,
-                       seed: int = 9999) -> float:
+def evaluate_vs(dqn_agent: DQNAgent, opponent, n_games: int = 20,
+                seed: int = 9999) -> float:
     """
-    Quick win-rate benchmark against RandomAgent (epsilon=0 for DQN).
-    Returns win rate in [0, 1].
+    Win-rate benchmark (epsilon=0 for DQN). Returns win rate in [0, 1].
     """
     old_eps = dqn_agent.epsilon
     dqn_agent.epsilon = 0.0
-    rand_agent = RandomAgent(name='EvalRandom')
 
     wins = 0
     for i in range(n_games):
-        dqn_idx = i % 2  # alternate sides
+        dqn_idx = i % 2
         s_dqn, s_opp, _ = play_training_game(
-            dqn_agent, rand_agent, dqn_player_idx=dqn_idx,
-            seed=seed + i, use_shaping=False)
+            dqn_agent, opponent, dqn_player_idx=dqn_idx,
+            seed=seed + i, use_shaping=False, store_transitions=False)
         if s_dqn > s_opp:
             wins += 1
 
     dqn_agent.epsilon = old_eps
     return wins / n_games
+
+
+# ── curriculum opponent selection ────────────────────────────────────────────
+def get_opponent(ep: int, total_episodes: int, curriculum: bool,
+                 dqn_agent: DQNAgent,
+                 random_opp: RandomAgent, minimax_opp: MinimaxAgent):
+    """
+    Return the opponent for this episode.
+
+    Without curriculum: always RandomAgent.
+    With curriculum:
+      Phase 1 (first 40%):  RandomAgent
+      Phase 2 (40%-70%):    self-play (copy of DQN with current epsilon)
+      Phase 3 (70%-100%):   MinimaxAgent(depth=1)
+    """
+    if not curriculum:
+        return random_opp, "Random"
+
+    progress = ep / total_episodes
+    if progress <= 0.4:
+        return random_opp, "Random"
+    elif progress <= 0.7:
+        # Self-play: use a snapshot of the agent itself
+        return dqn_agent, "Self"
+    else:
+        return minimax_opp, "Minimax"
 
 
 # ── main training loop ──────────────────────────────────────────────────────
@@ -149,14 +186,21 @@ def train(args):
         target_update_freq=args.target_update,
     )
 
-    # Curriculum: start vs RandomAgent, optionally switch to self-play later
-    opponent = RandomAgent(name='TrainOpponent')
+    # Resume from checkpoint if provided
+    if args.resume:
+        dqn.load(args.resume)
+        print(f"Resumed from {args.resume} (ep={dqn.episodes_done}, "
+              f"steps={dqn.train_steps})")
+
+    random_opp = RandomAgent(name='TrainRandom')
+    minimax_opp = MinimaxAgent(name='TrainMinimax', depth=1)
 
     eps_decay = (args.epsilon_start - args.epsilon_end) / max(args.episodes, 1)
 
     print(f"Training DQN for {args.episodes} episodes")
     print(f"  lr={args.lr}  gamma={args.gamma}  batch={args.batch_size}")
     print(f"  epsilon: {args.epsilon_start} -> {args.epsilon_end}")
+    print(f"  curriculum: {args.curriculum}")
     print(f"  device: {dqn.device}")
     print()
 
@@ -164,6 +208,12 @@ def train(args):
     start_time = time.time()
 
     for ep in range(1, args.episodes + 1):
+        # Select opponent
+        opponent, opp_label = get_opponent(
+            ep, args.episodes, args.curriculum,
+            dqn, random_opp, minimax_opp,
+        )
+
         # Alternate sides each episode
         dqn_idx = ep % 2
         game_seed = args.seed + ep if args.seed is not None else None
@@ -193,8 +243,9 @@ def train(args):
             avg_loss = np.mean(losses) if losses else 0.0
             elapsed = time.time() - start_time
             print(f"Ep {ep:>5}/{args.episodes} | "
+                  f"vs={opp_label:<7} | "
                   f"eps={dqn.epsilon:.3f} | "
-                  f"avg_reward={avg_r:+.2f} | "
+                  f"avg_r={avg_r:+.2f} | "
                   f"loss={avg_loss:.4f} | "
                   f"buf={len(dqn.replay_buffer)} | "
                   f"score={dqn_score}-{opp_score} | "
@@ -202,8 +253,16 @@ def train(args):
 
         # Evaluation benchmark
         if ep % args.eval_every == 0:
-            wr = evaluate_vs_random(dqn, n_games=20, seed=7777 + ep)
-            print(f"  >>> Win rate vs Random (20 games): {wr:.0%}")
+            wr_rand = evaluate_vs(dqn, RandomAgent(name='EvalRandom'),
+                                  n_games=20, seed=7777 + ep)
+            wr_mini = evaluate_vs(dqn, MinimaxAgent(name='EvalMinimax'),
+                                  n_games=20, seed=8888 + ep)
+            print(f"  >>> Win rate: vs Random {wr_rand:.0%} | "
+                  f"vs Minimax {wr_mini:.0%}")
+
+        # Periodic garbage collection
+        if ep % 100 == 0:
+            gc.collect()
 
         # Checkpoint
         if ep % args.save_every == 0:
@@ -217,14 +276,17 @@ def train(args):
     print(f"\nTraining complete. Final model saved to {final_path}")
 
     # Final evaluation
-    wr = evaluate_vs_random(dqn, n_games=20, seed=12345)
-    print(f"Final win rate vs Random (20 games): {wr:.0%}")
+    wr_rand = evaluate_vs(dqn, RandomAgent(name='EvalRandom'),
+                          n_games=20, seed=12345)
+    wr_mini = evaluate_vs(dqn, MinimaxAgent(name='EvalMinimax'),
+                          n_games=20, seed=12345)
+    print(f"Final win rate: vs Random {wr_rand:.0%} | vs Minimax {wr_mini:.0%}")
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Train DQN agent for Azul")
-    parser.add_argument('--episodes', type=int, default=5000)
+    parser.add_argument('--episodes', type=int, default=10000)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--epsilon-start', type=float, default=1.0)
@@ -233,6 +295,10 @@ def main():
     parser.add_argument('--buffer-capacity', type=int, default=50000)
     parser.add_argument('--target-update', type=int, default=50,
                         help='Sync target network every N training steps')
+    parser.add_argument('--curriculum', action='store_true',
+                        help='Enable curriculum: Random -> Self-play -> Minimax')
+    parser.add_argument('--resume', type=str, default=None,
+                        help='Resume from a checkpoint file')
     parser.add_argument('--save-dir', type=str, default='models')
     parser.add_argument('--save-every', type=int, default=500)
     parser.add_argument('--log-every', type=int, default=50)
