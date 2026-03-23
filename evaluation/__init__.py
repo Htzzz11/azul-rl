@@ -1,1 +1,2 @@
 from evaluation.simulation_manager import SimulationManager
+from evaluation.analyzer import Analyzer
