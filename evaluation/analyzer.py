@@ -43,6 +43,10 @@ def _simplify_agent_name(raw: str) -> str:
     m = re.search(r"sims=(\d+)", raw)
     if m:
         return f"{base}({m.group(1)})"
+    # For Minimax, keep depth if > 1
+    m = re.search(r"depth=(\d+)", raw)
+    if m and int(m.group(1)) > 1:
+        return f"{base}(d={m.group(1)})"
     return base
 
 
