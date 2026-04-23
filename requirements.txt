@@ -1,33 +1,15 @@
-azul_game_engine==1.0.2
-cloudpickle @ file:///opt/miniconda3/conda-bld/cloudpickle_1764930350775/work
-contourpy @ file:///opt/miniconda3/conda-bld/contourpy_1763643920606/work
-cycler @ file:///Users/ec2-user/croot/cycler_1766067932347/work
-Farama-Notifications @ file:///Users/ec2-user/buildout/croot/farama-notifications_1761944435204/work
-filelock==3.25.2
-fonttools @ file:///Users/ec2-user/buildout/croot/fonttools_1768900114828/work
-fsspec==2026.2.0
-gymnasium @ file:///Users/ec2-user/buildout/croot/gymnasium_1768900348519/work
-iniconfig @ file:///Users/ec2-user/croot/iniconfig_1767356816729/work
-Jinja2==3.1.6
-kiwisolver @ file:///opt/miniconda3/conda-bld/kiwisolver_1764159406929/work
-MarkupSafe==3.0.3
-matplotlib==3.10.8
-mpmath==1.3.0
-networkx==3.6.1
-numpy @ file:///Users/ec2-user/croot/numpy_and_numpy_base_1768376200567/work/dist/numpy-2.4.1-cp314-cp314-macosx_12_0_arm64.whl#sha256=15da4207c480411965544ec71016928092d33d619ef23df3c1205a151597e0c0
-packaging @ file:///opt/miniconda3/conda-bld/packaging_1761049079068/work
-pandas @ file:///Users/ec2-user/croot/pandas_1770642934667/work
-pettingzoo==1.24.3
-pillow @ file:///Users/ec2-user/croot/pillow_1769433331593/work
-pluggy @ file:///Users/ec2-user/buildout/croot/pluggy_1759951538137/work
-Pygments @ file:///Users/ec2-user/buildout/croot/pygments_1763762315285/work
-pyparsing @ file:///opt/miniconda3/conda-bld/pyparsing_1763973789564/work
-pytest @ file:///Users/ec2-user/croot/pytest_1769787675846/work
-python-dateutil @ file:///Users/ec2-user/buildout/croot/python-dateutil_1759952060416/work
-scipy @ file:///Users/ec2-user/buildout/croot/scipy_1763762647515/work/dist/scipy-1.16.3-cp314-cp314-macosx_12_0_arm64.whl#sha256=ff51f0636a201a66a1db2bb22b67f250c9653714665ffd2027efd0d22847dc41
-setuptools==82.0.1
-six @ file:///Users/ec2-user/buildout/croot/six_1759951952559/work
-sympy==1.14.0
-torch==2.10.0
-tornado @ file:///Users/ec2-user/buildout/croot/tornado_1768896066734/work
-typing_extensions @ file:///Users/ec2-user/buildout/croot/typing_extensions_1759952168048/work
+# Project dependencies. Mirrors environment.yaml.
+# Install with: pip install -r requirements.txt
+
+azul-game-engine>=1.0.2
+pettingzoo>=1.24.3
+gymnasium>=1.0.0
+
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+matplotlib>=3.7
+
+torch>=2.0
+
+pytest>=7.0

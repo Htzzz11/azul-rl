@@ -11,9 +11,8 @@ statistical analysis and publication-quality visualisations covering:
 
 from __future__ import annotations
 
-import os
+import math
 import re
-import textwrap
 from pathlib import Path
 
 import matplotlib
@@ -226,14 +225,16 @@ class Analyzer:
         print(stats_df.to_string(index=False, float_format="{:.2f}".format))
         print()
 
-        # ---- Overlaid histograms per matchup ----
-        n_matchups = len(list(matchups))
+        # ---- Overlaid histograms per matchup, laid out in a portrait-friendly grid ----
         matchup_groups = list(self.data.groupby("source_file"))
+        n_matchups = len(matchup_groups)
+        ncols = min(3, n_matchups)
+        nrows = math.ceil(n_matchups / ncols)
         fig, axes = plt.subplots(
-            1, n_matchups, figsize=(5 * n_matchups, 4), squeeze=False
+            nrows, ncols, figsize=(4.5 * ncols, 3.2 * nrows), squeeze=False
         )
         for idx, (src, grp) in enumerate(matchup_groups):
-            ax = axes[0, idx]
+            ax = axes[idx // ncols, idx % ncols]
             a1 = grp["agent1_short"].iloc[0]
             a2 = grp["agent2_short"].iloc[0]
 
@@ -251,40 +252,43 @@ class Analyzer:
             ax.set_xlabel("Score", fontsize=9)
             ax.set_ylabel("Frequency", fontsize=9)
             ax.legend(fontsize=8)
-        fig.suptitle("Score Distributions by Matchup", fontsize=12, y=1.02)
+        for idx in range(n_matchups, nrows * ncols):
+            axes[idx // ncols, idx % ncols].set_visible(False)
+        fig.suptitle("Score Distributions by Matchup", fontsize=12, y=1.0)
         fig.tight_layout()
         fig.savefig(self.figures_dir / "score_histograms.png", dpi=150, bbox_inches="tight")
         plt.close(fig)
         print(f"  [saved] {self.figures_dir / 'score_histograms.png'}")
 
-        # ---- Box plots ----
+        # ---- Box plots, oriented horizontally so matchup labels run down the y-axis ----
         box_data: list[dict] = []
-        labels: list[str] = []
         for src, grp in self.data.groupby("source_file"):
             a1 = grp["agent1_short"].iloc[0]
             a2 = grp["agent2_short"].iloc[0]
             box_data.append(
-                dict(label=f"{a1}\n(vs {a2})", scores=grp["agent1_score"].values)
+                dict(label=f"{a1} (vs {a2})", scores=grp["agent1_score"].values)
             )
             box_data.append(
-                dict(label=f"{a2}\n(vs {a1})", scores=grp["agent2_score"].values)
+                dict(label=f"{a2} (vs {a1})", scores=grp["agent2_score"].values)
             )
 
-        fig, ax = plt.subplots(figsize=(max(6, 2 * len(box_data)), 5))
+        fig, ax = plt.subplots(figsize=(8, max(5, 0.35 * len(box_data))))
         bp = ax.boxplot(
             [d["scores"] for d in box_data],
             tick_labels=[d["label"] for d in box_data],
             patch_artist=True,
+            vert=False,
         )
         colors = plt.cm.tab10(np.linspace(0, 1, len(box_data)))
         for patch, color in zip(bp["boxes"], colors):
             patch.set_facecolor(color)
             patch.set_alpha(0.6)
-        ax.set_ylabel("Score", fontsize=10)
+        ax.set_xlabel("Score", fontsize=10)
         ax.set_title("Score Distributions (Box Plots)", fontsize=12)
-        ax.tick_params(axis="x", labelsize=8)
+        ax.tick_params(axis="y", labelsize=8)
+        ax.invert_yaxis()
         fig.tight_layout()
-        fig.savefig(self.figures_dir / "score_boxplots.png", dpi=150)
+        fig.savefig(self.figures_dir / "score_boxplots.png", dpi=150, bbox_inches="tight")
         plt.close(fig)
         print(f"  [saved] {self.figures_dir / 'score_boxplots.png'}")
 

@@ -34,3 +34,7 @@ packages = ["azul_marl_env"]
 omit = [
     "azul_marl_env/render/*"
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
